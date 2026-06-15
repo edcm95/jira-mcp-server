@@ -1,0 +1,11 @@
+services:
+  jira-mcp:
+    build: .
+    image: jira-mcp-server
+    container_name: jira-mcp-server
+    env_file: .env
+    environment:
+      MCP_PORT: "${MCP_PORT:-8766}"
+    ports:
+      - "${MCP_PORT:-8766}:${MCP_PORT:-8766}"
+    restart: unless-stopped
