@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py .
+COPY server.py md_to_adf.py ./
 
 ENV MCP_PORT=8766
 EXPOSE 8766

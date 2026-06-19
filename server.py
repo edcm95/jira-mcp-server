@@ -10,6 +10,7 @@ import httpx
 from typing import Any
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
+from md_to_adf import markdown_to_adf
 
 # ── logging setup ──────────────────────────────────────────────────────────────
 
@@ -174,7 +175,9 @@ mcp = FastMCP(
         "Use these tools to read and manage Jira issues, projects, and workflows. "
         "Prefer search_issues with JQL for bulk lookups; use get_issue for full detail. "
         "Use get_transitions before transition_issue to find valid transition IDs. "
-        "Use find_users to resolve accountIds before assigning issues."
+        "Use find_users to resolve accountIds before assigning issues. "
+        "For comments: use add_comment for plain text; use add_comment_markdown when the "
+        "comment contains Markdown formatting (headers, bold, lists, code blocks, tables, etc.)."
     ),
 )
 
@@ -433,7 +436,13 @@ def update_issue(
 
 @mcp.tool()
 def add_comment(issue_key: str, comment: str) -> str:
-    """Add a plain-text comment to a Jira issue."""
+    """
+    Add a plain-text comment to a Jira issue.
+
+    Use this tool when the comment is plain prose with no Markdown formatting.
+    Use add_comment_markdown instead when the input contains formatting such as
+    headers, bold/italic text, bullet lists, code blocks, or tables.
+    """
     start = time.perf_counter()
     try:
         result  = _post(f"issue/{issue_key}/comment", {"body": _description_field(comment)})
@@ -443,6 +452,47 @@ def add_comment(issue_key: str, comment: str) -> str:
         return f"Comment {cid} added to {issue_key}."
     except Exception as e:
         _tool_err("add_comment", issue_key, e)
+        raise
+
+
+@mcp.tool()
+def add_comment_markdown(issue_key: str, comment: str) -> str:
+    """
+    Add a richly formatted comment to a Jira issue using Markdown syntax.
+
+    Use this tool whenever the comment contains any Markdown formatting.
+    Use add_comment for plain prose that has no formatting at all.
+
+    Supported Markdown:
+      Headings      : # H1  ##  H2  …  ###### H6
+      Emphasis      : **bold**  *italic*  ***bold italic***  ~~strikethrough~~
+      Inline code   : `code`
+      Code blocks   : ```language\\ncode\\n```  (language tag is optional)
+      Lists         : - bullet  /  1. ordered  (nested lists supported)
+      Task lists    : - [ ] todo  /  - [x] done
+      Blockquotes   : > quoted text  (may be nested)
+      Tables        : | Col A | Col B |\\n|---|---|\\n| val | val |
+      Links         : [label](https://url "optional title")
+      Images        : ![alt](https://url)  → rendered as a hyperlinked label
+      Horizontal rule: ---  or  ***
+      Hard line break: two trailing spaces or \\\\n
+
+    Note: requires Jira API v3 (Jira Cloud). Has no effect on Server/DC (v2).
+    """
+    start = time.perf_counter()
+    try:
+        if JIRA_API_VER != "3":
+            # API v2 doesn't accept ADF; fall back to plain text
+            body: Any = comment
+        else:
+            body = markdown_to_adf(comment)
+        result  = _post(f"issue/{issue_key}/comment", {"body": body})
+        elapsed = time.perf_counter() - start
+        cid     = result.get("id", "?")
+        _tool_ok("add_comment_markdown", f"{issue_key} → comment {cid}", elapsed)
+        return f"Comment {cid} added to {issue_key}."
+    except Exception as e:
+        _tool_err("add_comment_markdown", issue_key, e)
         raise
 
 
